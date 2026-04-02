@@ -1,32 +1,13 @@
 import sys
 import os
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
 import cv2
 from plantcv import plantcv as pcv
 
 
-def set_backend():
-    for backend in ('TkAgg', 'Qt5Agg', 'Qt4Agg', 'GTK3Agg', 'wxAgg'):
-        try:
-            matplotlib.use(backend)
-            import matplotlib.figure as _fig
-            _fig.Figure()
-            return backend
-        except Exception:
-            continue
-    matplotlib.use('Agg')
-    return 'Agg'
-
-
-BACKEND = set_backend()
-os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-if os.environ.get('QT_QPA_PLATFORM') == 'offscreen':
-    del os.environ['QT_QPA_PLATFORM']
 IMAGE_EXTENSIONS = {
-    '.jpg', '.jpeg', '.png', '.bmp', '.tiff',
-    '.tif', '.JPG', '.JPEG', '.PNG'
+    '.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'
 }
 
 

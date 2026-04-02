@@ -13,11 +13,9 @@ from tensorflow.keras.preprocessing.image import (ImageDataGenerator,
                                                   save_img)
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 IMAGE_EXTENSIONS = {
-    '.jpg', '.jpeg', '.png', '.bmp', '.tiff',
-    '.tif', '.JPG', '.JPEG', '.PNG'
+    '.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'
 }
 
 

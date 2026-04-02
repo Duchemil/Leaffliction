@@ -3,8 +3,7 @@ import sys
 import matplotlib.pyplot as plt
 
 IMAGE_EXTENSIONS = {
-    ".jpg", ".jpeg", ".png", ".bmp", ".gif",
-    ".tiff", ".JPG", ".PNG"
+    '.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'
 }
 
 
