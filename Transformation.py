@@ -10,26 +10,81 @@ IMAGE_EXTENSIONS = {
     '.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'
 }
 
+# Shadow suppression tuning
+SHADOW_THRESHOLD_VALUE = 60
+SHADOW_THRESHOLD_LIGHT = 50
+MORPH_KERNEL_SIZE = 5
+
+
+def remove_shadows_and_noise(img_bgr, binary_mask):
+    """Suppress shadows and background noise from binary mask."""
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
+    
+    # Remove very dark pixels (shadows)
+    v_channel = hsv[:, :, 2]
+    l_channel = lab[:, :, 0]
+    shadow_mask = cv2.inRange(v_channel, SHADOW_THRESHOLD_VALUE, 255)
+    light_mask = cv2.inRange(l_channel, SHADOW_THRESHOLD_LIGHT, 255)
+    
+    combined = cv2.bitwise_and(binary_mask, shadow_mask)
+    combined = cv2.bitwise_and(combined, light_mask)
+    
+    return combined
+
+
+def keep_largest_component(mask):
+    """Extract only the largest connected component to eliminate background artifacts."""
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if num_labels <= 1:
+        return mask
+    
+    # Find the largest component (skip background label 0)
+    largest_label = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
+    cleaned = np.zeros_like(mask)
+    cleaned[labels == largest_label] = 255
+    return cleaned
+
 
 def compute_transformations(image_path):
-    img = cv2.imread(image_path)
+    img = cv2.imread(image_path)  # BGR
     if img is None:
         print(f"Error: Cannot read image: {image_path}")
         exit()
+
+    # PlantCV color conversions expect RGB
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     results = {}
     results['original'] = img
 
     pcv.params.debug = None
-    gray_s = pcv.rgb2gray_hsv(rgb_img=img, channel='s')
-    gaussian = pcv.gaussian_blur(
-        img=gray_s, ksize=(11, 11), sigma_x=0, sigma_y=None)
+
+    # Closer to subject: keep details in the blurred view
+    gray_s = pcv.rgb2gray_hsv(rgb_img=img_rgb, channel='s')
+    gaussian = pcv.gaussian_blur(img=gray_s, ksize=(5, 5), sigma_x=0, sigma_y=None)
     results['gaussian'] = gaussian
 
-    binary = pcv.threshold.binary(
-        gray_img=gray_s, threshold=50, object_type='light')
-    mask = pcv.fill(bin_img=binary, size=200)
-    results['mask'] = mask
+    # Binary mask used for all geometry operations
+    binary = pcv.threshold.binary(gray_img=gaussian, threshold=55, object_type='light')
+    
+    # Apply shadow and noise removal
+    binary = remove_shadows_and_noise(img, binary)
+    
+    # Morphological cleanup: remove noise and fill small gaps
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (MORPH_KERNEL_SIZE, MORPH_KERNEL_SIZE))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
+    
+    # Keep only the largest component (the leaf)
+    mask = keep_largest_component(binary)
+    mask = pcv.fill(bin_img=mask, size=40)
+    results['mask_binary'] = mask
+
+    # Subject-like Figure IV.3: color image with white background outside mask
+    mask_vis = img.copy()
+    mask_vis[mask == 0] = (255, 255, 255)
+    results['mask'] = mask_vis
 
     roi = img.copy()
     overlay = np.zeros_like(img)
@@ -39,8 +94,7 @@ def compute_transformations(image_path):
     cv2.rectangle(roi, (5, 5), (w - 5, h - 5), (255, 0, 0), 4)
     results['roi'] = roi
 
-    contours, _ = cv2.findContours(mask, cv2.RETR_TREE,
-                                   cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     analyze = img.copy()
     if contours:
@@ -76,11 +130,7 @@ def compute_transformations(image_path):
             cx_leaf = int(M_leaf['m10'] / M_leaf['m00'])
             x, y, bw, bh = cv2.boundingRect(largest)
             for i in range(5):
-                cv2.circle(
-                    landmarks,
-                    (cx_leaf, y + int(bh * i / 4)),
-                    5, (0, 255, 0), -1
-                )
+                cv2.circle(landmarks, (cx_leaf, y + int(bh * i / 4)), 5, (0, 255, 0), -1)
     results['landmarks'] = landmarks
 
     return results
@@ -123,7 +173,8 @@ def build_color_histogram(img, mask):
 def draw_figure(fig, results):
     img = results['original']
     gaussian = results['gaussian']
-    mask = results['mask']
+    mask_vis = results['mask']
+    mask_binary = results['mask_binary']
     roi = results['roi']
     analyze = results['analyze']
     landmarks = results['landmarks']
@@ -138,15 +189,14 @@ def draw_figure(fig, results):
         ax.set_title(title, fontsize=9)
 
     show(fig.add_subplot(gs[0, 0]), img, "Figure IV.1: Original")
-    show(fig.add_subplot(gs[0, 1]), gaussian,
-         "Figure IV.2: Gaussian blur", cmap='gray')
-    show(fig.add_subplot(gs[0, 2]), mask, "Figure IV.3: Mask", cmap='gray')
+    show(fig.add_subplot(gs[0, 1]), gaussian, "Figure IV.2: Gaussian blur", cmap='gray')
+    show(fig.add_subplot(gs[0, 2]), mask_vis, "Figure IV.3: Mask")
     show(fig.add_subplot(gs[0, 3]), roi, "Figure IV.4: Roi objects")
     show(fig.add_subplot(gs[1, 0]), analyze, "Figure IV.5: Analyze object")
     show(fig.add_subplot(gs[1, 1]), landmarks, "Figure IV.6: Pseudolandmarks")
 
     ax_hist = fig.add_subplot(gs[1, 2:])
-    for name, (x, y, color) in build_color_histogram(img, mask).items():
+    for name, (x, y, color) in build_color_histogram(img, mask_binary).items():
         ax_hist.plot(x, y, color=color, label=name, linewidth=1.2)
     ax_hist.set_title("Figure IV.7: Color histogram", fontsize=9)
     ax_hist.set_xlabel("Pixel intensity")
