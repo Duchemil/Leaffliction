@@ -2,6 +2,7 @@ import sys
 import os
 import numpy as np
 from PIL import Image, ImageFilter, ImageEnhance
+import matplotlib.pyplot as plt
 
 
 def rotation(img):
@@ -60,7 +61,29 @@ AUG_NAMES = [name for name, _ in AUGMENTATIONS]
 AUG_FUNCS = {name: fn for name, fn in AUGMENTATIONS}
 
 
-def augment_image(img_path, output_dir=None):
+def display_augmentations(original, augmented_images, base_name):
+    num_aug = len(augmented_images)
+    fig, axes = plt.subplots(2, ((num_aug) // 2)+1, figsize=(12, 6))
+    axes = axes.flatten()
+
+    axes[0].imshow(original)
+    axes[0].set_title("Original",  fontsize=12, fontweight='bold', pad=10)
+    axes[0].axis("off")
+
+    for idx, (name, aug_img) in enumerate(augmented_images, 1):
+        axes[idx].imshow(aug_img)
+        axes[idx].set_title(name, fontsize=12, fontweight='bold', pad=10)
+        axes[idx].axis("off")
+
+    for idx in range(num_aug + 1, len(axes)):
+        axes[idx].axis("off")
+
+    plt.suptitle(f"Augmentations: {base_name}", fontsize=16)
+    plt.tight_layout()
+    plt.show()
+
+
+def augment_image(img_path, output_dir=None, display=False):
     if not os.path.isfile(img_path):
         print(f"Error: Image not found: {img_path}")
         exit()
@@ -69,11 +92,21 @@ def augment_image(img_path, output_dir=None):
     ext = os.path.splitext(img_path)[1]
     save_dir = output_dir if output_dir else (os.path.dirname(img_path) or ".")
     saved = []
+
+    augmented_images = []
+
     for name, fn in AUGMENTATIONS:
         out_path = os.path.join(save_dir, f"{base_name}_{name}{ext}")
         fn(img).save(out_path)
         saved.append(out_path)
         print(f"  Saved: {out_path}")
+
+        if display:
+            augmented_images.append((name, Image.open(out_path)))
+    
+    if display:
+        display_augmentations(img, augmented_images, base_name)
+
     return saved
 
 
@@ -173,7 +206,7 @@ def main(args):
         balance_dataset(path)
     elif os.path.isfile(path):
         print(f"Augmenting: {path}")
-        augment_image(path, output_dir)
+        augment_image(path, output_dir, display=True)
         print("Done.")
     else:
         print(f"Error: '{path}' is neither a file nor a directory.")
