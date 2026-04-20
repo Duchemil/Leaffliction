@@ -3,6 +3,7 @@ import os
 import numpy as np
 from PIL import Image, ImageFilter, ImageEnhance
 import matplotlib.pyplot as plt
+import shutil
 
 
 def rotation(img):
@@ -103,7 +104,7 @@ def augment_image(img_path, output_dir=None, display=False):
 
         if display:
             augmented_images.append((name, Image.open(out_path)))
-    
+
     if display:
         display_augmentations(img, augmented_images, base_name)
 
@@ -139,9 +140,16 @@ def print_summary(class_images, dataset_dir, max_count):
         print(f"  {label:45s} {len(imgs):5d} images")
 
 
-def generate_images(cls, imgs, needed, dataset_dir):
+def generate_images(cls, imgs, needed, dataset_dir, aug_dir):
     label = os.path.relpath(cls, dataset_dir)
     print(f"\n[{label}] needs {needed} more images")
+
+    class_name = os.path.basename(cls)
+    class_aug_dir = os.path.join(aug_dir, class_name)
+    os.makedirs(class_aug_dir, exist_ok=True)
+
+    for img_path in imgs:
+        shutil.copy(img_path, class_aug_dir)
 
     candidates = []
     for src in imgs:
@@ -155,11 +163,12 @@ def generate_images(cls, imgs, needed, dataset_dir):
         idx += 1
         base_name = os.path.splitext(os.path.basename(src))[0]
         ext = os.path.splitext(src)[1]
-        out_path = os.path.join(cls, f"{base_name}_{aug_name}{ext}")
-        if not os.path.exists(out_path):
-            AUG_FUNCS[aug_name](Image.open(src).convert("RGB")).save(out_path)
-            generated += 1
-            print(f"  + {os.path.basename(out_path)}")
+        out_path = os.path.join(class_aug_dir, f"{base_name}_{aug_name}{ext}")
+        if os.path.exists(out_path):
+            os.remove(out_path)
+        AUG_FUNCS[aug_name](Image.open(src).convert("RGB")).save(out_path)
+        generated += 1
+        print(f"  + {os.path.basename(out_path)}")
 
 
 def balance_dataset(dataset_dir):
@@ -176,12 +185,18 @@ def balance_dataset(dataset_dir):
     max_count = max(len(v) for v in class_images.values())
     print_summary(class_images, dataset_dir, max_count)
 
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    aug_dir = os.path.join(script_dir, "augmented_directory")
+    if os.path.exists(aug_dir):
+        shutil.rmtree(aug_dir)
+    os.makedirs(aug_dir)
+
     print("\nBalancing...")
     for cls, imgs in class_images.items():
         needed = max_count - len(imgs)
         if needed <= 0:
             continue
-        generate_images(cls, imgs, needed, dataset_dir)
+        generate_images(cls, imgs, needed, dataset_dir, aug_dir)
 
     print(f"\nDone. All classes balanced to {max_count} images.")
 
@@ -204,6 +219,8 @@ def main(args):
 
     if os.path.isdir(path):
         balance_dataset(path)
+        aug_dir = os.path.join(path, "augmented_directory")
+        print(f"\nAugmented dataset available at: {aug_dir}")
     elif os.path.isfile(path):
         print(f"Augmenting: {path}")
         augment_image(path, output_dir, display=True)

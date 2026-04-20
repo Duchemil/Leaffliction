@@ -5,10 +5,12 @@ import json
 import tempfile
 import shutil
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import cv2
 import tensorflow as tf
 
+matplotlib.use('TkAgg')
 
 IMAGE_EXTENSIONS = {
     '.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'

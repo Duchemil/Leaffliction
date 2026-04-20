@@ -12,18 +12,15 @@ IMAGE_EXTENSIONS = {
     '.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'
 }
 
-# Shadow suppression tuning
 SHADOW_THRESHOLD_VALUE = 60
 SHADOW_THRESHOLD_LIGHT = 50
 MORPH_KERNEL_SIZE = 5
 
 
 def remove_shadows_and_noise(img_bgr, binary_mask):
-    """Suppress shadows and background noise from binary mask."""
     hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
     lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
 
-    # Remove very dark pixels (shadows)
     v_channel = hsv[:, :, 2]
     l_channel = lab[:, :, 0]
     shadow_mask = cv2.inRange(v_channel, SHADOW_THRESHOLD_VALUE, 255)
@@ -36,14 +33,11 @@ def remove_shadows_and_noise(img_bgr, binary_mask):
 
 
 def keep_largest_component(mask):
-    """Extract only the largest connected component to
-    eliminate background artifacts."""
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
         mask, connectivity=8)
     if num_labels <= 1:
         return mask
 
-    # Find the largest component (skip background label 0)
     largest_label = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
     cleaned = np.zeros_like(mask)
     cleaned[labels == largest_label] = 255
@@ -51,12 +45,11 @@ def keep_largest_component(mask):
 
 
 def compute_transformations(image_path):
-    img = cv2.imread(image_path)  # BGR
+    img = cv2.imread(image_path)
     if img is None:
         print(f"Error: Cannot read image: {image_path}")
         exit()
 
-    # PlantCV color conversions expect RGB
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     results = {}
@@ -64,32 +57,26 @@ def compute_transformations(image_path):
 
     pcv.params.debug = None
 
-    # Closer to subject: keep details in the blurred view
     gray_s = pcv.rgb2gray_hsv(rgb_img=img_rgb, channel='s')
     gaussian = pcv.gaussian_blur(img=gray_s, ksize=(5, 5), sigma_x=0,
                                  sigma_y=None)
     results['gaussian'] = gaussian
 
-    # Binary mask used for all geometry operations
     binary = pcv.threshold.binary(gray_img=gaussian, threshold=55,
                                   object_type='light')
 
-    # Apply shadow and noise removal
     binary = remove_shadows_and_noise(img, binary)
 
-    # Morphological cleanup: remove noise and fill small gaps
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
                                        (MORPH_KERNEL_SIZE,
                                         MORPH_KERNEL_SIZE))
     binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
     binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
 
-    # Keep only the largest component (the leaf)
     mask = keep_largest_component(binary)
     mask = pcv.fill(bin_img=mask, size=40)
     results['mask_binary'] = mask
 
-    # Subject-like Figure IV.3: color image with white background outside mask
     mask_vis = img.copy()
     mask_vis[mask == 0] = (255, 255, 255)
     results['mask'] = mask_vis
